@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Huffman Text Compressor</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            padding: 20px;
+            background: linear-gradient(120deg, #f6d365, #fda085);
+            color: #333;
+        }
+        h2, h3 {
+            color: #fff;
+        }
+        input, button {
+            margin: 10px;
+            padding: 10px;
+            font-size: 16px;
+            border-radius: 5px;
+            border: none;
+        }
+        button {
+            background-color: #ff6f61;
+            color: white;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #e85b50;
+        }
+        #output, #huffmanCodes {
+            text-align: left;
+            background: #fff;
+            padding: 15px;
+            border-radius: 10px;
+            margin-top: 20px;
+            box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.2);
+            font-family: monospace;
+            overflow-wrap: break-word;
+            word-break: break-word;
+            max-width: 90%;
+            min-height: 100px;
+            margin-left: auto;
+            margin-right: auto;
+            white-space: normal;
+        }
+    </style>
+</head>
+<body>
+    <h2>Huffman Text Compressor</h2>
+    <input type="file" id="fileInput" accept=".txt">
+    <button onclick="compressFile()">Variable Length Compress</button>
+    <button onclick="fixedLengthCompress()">Fixed Length Compress</button>
+    <button onclick="generateHuffmanCodes()">Show Huffman Codes</button>
+    <button onclick="downloadCompressedData()">Download Variable Length</button>
+    <button onclick="downloadFixedCompressedData()">Download Fixed Length</button>
+    <h3>Output</h3>
+    <div id="output"></div>
+    <h3>Huffman Codes</h3>
+    <div id="huffmanCodes"></div>
+
+    <script>
+        let globalCodes = {};
+        let globalCompressedText = "";
+        let globalFixedCompressedText = "";
+        let originalText = "";
+        let originalSize = 0;
+        let compressedSize = 0;
+        let fixedCompressedSize = 0;
+
+        function compressFile() {
+            const fileInput = document.getElementById("fileInput").files[0];
+            if (!fileInput) {
+                alert("Please select a file.");
+                return;
+            }
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                originalText = event.target.result;
+                originalSize = originalText.length;
+                
+                const { compressedText, codes } = huffmanCompress(originalText);
+                globalCodes = codes;
+                globalCompressedText = compressedText;
+                
+                compressedSize = compressedText.replace(/\s+/g, '').length / 8;
+                document.getElementById("output").innerText = `Variable Length Compression:\nOriginal Size: ${originalSize} bytes\nCompressed Size: ${compressedSize.toFixed(2)} bytes`;
+            };
+            reader.readAsText(fileInput);
+        }
+
+        function fixedLengthCompress() {
+            const fileInput = document.getElementById("fileInput").files[0];
+            if (!fileInput) {
+                alert("Please select a file.");
+                return;
+            }
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                originalText = event.target.result;
+                originalSize = originalText.length;
+                
+                const { compressedText } = fixedLengthEncoding(originalText);
+                globalFixedCompressedText = compressedText;
+                
+                fixedCompressedSize = compressedText.replace(/\s+/g, '').length / 8;
+                document.getElementById("output").innerText += `\n\nFixed Length Compression:\nOriginal Size: ${originalSize} bytes\nCompressed Size: ${fixedCompressedSize.toFixed(2)} bytes`;
+            };
+            reader.readAsText(fileInput);
+        }
+
+        function generateHuffmanCodes() {
+            if (Object.keys(globalCodes).length === 0) {
+                alert("Please compress a file first.");
+                return;
+            }
+            document.getElementById("huffmanCodes").innerText = `Variable Length Huffman Codes:\n${JSON.stringify(globalCodes, null, 2)}`;
+        }
+
+        function downloadCompressedData() {
+            if (!globalCompressedText) {
+                alert("Please compress a file first.");
+                return;
+            }
+            const blob = new Blob([globalCompressedText], { type: "text/plain" });
+            const link = document.createElement("a");
+            link.href = URL.createObjectURL(blob);
+            link.download = "variable_compressed.txt";
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        function downloadFixedCompressedData() {
+            if (!globalFixedCompressedText) {
+                alert("Please compress a file first.");
+                return;
+            }
+            const blob = new Blob([globalFixedCompressedText], { type: "text/plain" });
+            const link = document.createElement("a");
+            link.href = URL.createObjectURL(blob);
+            link.download = "fixed_compressed.txt";
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        function huffmanCompress(text) {
+            const freq = {};
+            for (let char of text) freq[char] = (freq[char] || 0) + 1;
+            
+            const heap = Object.entries(freq).map(([char, count]) => ({ char, count, left: null, right: null }));
+            heap.sort((a, b) => a.count - b.count);
+            
+            while (heap.length > 1) {
+                let left = heap.shift(), right = heap.shift();
+                heap.push({ char: null, count: left.count + right.count, left, right });
+                heap.sort((a, b) => a.count - b.count);
+            }
+            
+            const root = heap[0];
+            const codes = {};
+            function generateCodes(node, code) {
+                if (node.char !== null) codes[node.char] = code;
+                else {
+                    generateCodes(node.left, code + "0");
+                    generateCodes(node.right, code + "1");
+                }
+            }
+            generateCodes(root, "");
+            
+            let compressedText = "";
+            for (let char of text) compressedText += codes[char] + " ";
+            
+            return { compressedText, codes };
+        }
+
+        function fixedLengthEncoding(text) {
+            const uniqueChars = [...new Set(text)];
+            const bitSize = Math.ceil(Math.log2(uniqueChars.length));
+            const codes = Object.fromEntries(uniqueChars.map((char, i) => [char, i.toString(2).padStart(bitSize, "0")]));
+            
+            let compressedText = text.split('').map(char => codes[char]).join(' ');
+            return { compressedText };
+        }
+    </script>
+</body>
+</html>
